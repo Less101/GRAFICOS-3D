@@ -1,0 +1,330 @@
+<! --
+Autor: Jorge Delgado Valencia
+
+Partes implementadas:
+
+-  Funcionalidad básica
+-  Funcionalidad avanzada:
+      - Ángulo de rebote variable
+      - Velocidad de desplazamiento vertical variable
+-  Mejoras:
+      - Marcador con gráfico 3D en lugar de como texto html
+      
+--/>      
+
+<!DOCTYPE html>
+<html>
+
+<head>
+<title>Three.js: Collision detection</title>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/103/three.min.js"></script>
+
+<script>
+   var stepX = 0.15;
+   var stepY = 0.25;
+   var step = 1.5;
+   var user;
+   var counter = 0.0;
+   var borders;
+   var go = false;
+   var score = 0.0;
+   var lives = 3.0;
+   var angle = 1.0;
+   var speed = 1.0;
+
+   var scoreBoard = { //-- Tamaño y color del usuario.
+      "size": 2.5,
+      "height": 0.25,
+      "color": 0xFFFF0A,
+      "position": {
+        "x": -10,
+        "y": 15,
+        "z": 7.5
+      }
+    };
+
+   function init() {
+      var scene = new THREE.Scene();
+      var sceneWidth = window.innerWidth - 20;
+      var sceneHeight = window.innerHeight - 20;
+
+      scene.background = new THREE.TextureLoader().load('Retro_Arcade.jpg');
+      var texture = new THREE.TextureLoader().load("ball.jpg");
+
+
+      var camera = new THREE.PerspectiveCamera(90, sceneWidth / sceneHeight, 0.01, 100);
+      camera.position.set( 0, -20, 30);
+      camera.lookAt(scene.position);
+
+      var renderer = new THREE.WebGLRenderer({
+         antialias : true
+      });
+      renderer.shadowMap.enabled = true;
+      renderer.setSize(sceneWidth, sceneHeight);
+      document.body.appendChild(renderer.domElement);
+
+      var light = getLight();
+      var leftBorder = getBorder("left", 1, 49, 2, -18, 0, 0); // x, y, z , posx, posy, posz
+      var rightBorder = getBorder("right", 1, 49, 2, 19, 0, 0);
+      var topBorder = getBorder("top", 37, 1, 2, 0, 25, 0);
+      var user = getBorder("player", 8, 1, 3, 0, -24.5, 0);
+      var sphere = getSphere();
+      var floor = getFloor();
+      var spherePosition = 0;
+      var userPosition = 0;
+      var previousPosition = 0;
+
+      scene.add(light);
+      scene.add(leftBorder);
+      scene.add(rightBorder);
+      scene.add(topBorder);
+      scene.add(user);
+
+      scene.add(sphere);
+      scene.add(floor);
+
+      borders = [ leftBorder, rightBorder, topBorder, user ];
+      
+
+      //-- bucle for para dibujar los ladrillos
+      for (var j = 0; j < 4 * 3; j += 3) {
+
+            for (var i = 0; i < 7 * 4.5 ; i += 4.5) {
+               var brick = getBorder(("brick" + counter), 4, 1, 2, i - 13 , j + 12, 0); // x, y, z , posx, posy, posz
+               counter += 1;
+               scene.add(brick);
+               borders.push(brick);
+            }
+      }
+      
+      //-- Para deplazar el cursor capturamos el evento
+      document.onkeydown = function(ev) {
+                switch (ev.keyCode) {
+                    case 32: // Espacio, funciona como boton start para el juego.
+                        go = true;
+                        break;
+                    case 37: // Left                        
+                        if(borders[3].position.x - 5 >= -18) {
+                           borders[3].position.x -= step;
+                        }
+                        break;
+                    case 39: // Right
+                        if(borders[3].position.x + 5 <= 19) {
+                           borders[3].position.x += step;
+                        }
+                        break;
+                  break;      
+                }
+      }    
+
+      getCounter(scene, 'score', "PRESS BAR TO START");
+      animate(sphere, borders, renderer, scene, camera, userPosition);
+   }
+   
+   function moveBall(sphere, scene){
+      if(go) {
+         sphere.position.x += stepX * angle;
+         sphere.position.y += stepY * speed;
+      }
+   } 
+
+   function animate(sphere, borders, renderer, scene, camera, userPosition) {
+      checkCollision(sphere, borders, scene);
+      moveBall(sphere, scene);
+      Lives(sphere,scene); 
+      requestAnimationFrame(function() {
+         animate(sphere, borders, renderer, scene, camera, userPosition);         
+      }); 
+      renderer.render(scene, camera);  
+   }
+
+   
+   function getLight() {
+      var light = new THREE.DirectionalLight();
+      light.position.set(4, 4, 4);
+      light.castShadow = true;
+      light.shadow.camera.near = 0;
+      light.shadow.camera.far = 16;
+      light.shadow.camera.left = -8;
+      light.shadow.camera.right = 5;
+      light.shadow.camera.top = 15;
+      light.shadow.camera.bottom = -10;
+      light.shadow.mapSize.width = 4096;
+      light.shadow.mapSize.height = 4096;
+
+      return light;
+   }
+
+   function getSphere() {
+      var geometry = new THREE.SphereGeometry(1, 20, 20);
+      //var material = new THREE.MeshNormalMaterial();
+      var texture = new THREE.TextureLoader().load("ball.jpg");
+      var material = getMaterial(texture);
+      var mesh = new THREE.Mesh(geometry, material);
+      mesh.position.z = 1;
+      mesh.castShadow = true;
+      mesh.name = "sphere";
+
+      return mesh;
+   }
+
+   function getFloor() {
+      var geometry = new THREE.PlaneGeometry(37, 50);  //-- dimensiones del fondo
+      var texture = new THREE.TextureLoader().load("pinball.jpg");
+      var mesh = new THREE.Mesh(geometry, getMaterial(texture));
+      mesh.receiveShadow = true;
+      mesh.name = "floor";
+
+      return mesh;
+   }
+
+   function getBorder(name, x, y, z, posX, posY, posZ) {
+      var geometry = new THREE.BoxGeometry(x, y, z);
+      var texture = new THREE.TextureLoader().load("pinball2.jpg");
+      var mesh = new THREE.Mesh(geometry, getMaterial(texture));
+      mesh.receiveShadow = true;
+      mesh.position.set(posX, posY, posZ);
+      mesh.name = name;
+
+      return mesh;
+   }
+
+   function getMaterial(texture) {
+      var material = new THREE.MeshPhysicalMaterial({
+         map : texture
+      });
+      material.side = THREE.DoubleSide;
+
+      return material;
+   }
+
+ //-- Mostrar contador 3D por pantalla.
+   function getCounter(scene, name, text) {
+      var loader = new THREE.FontLoader();
+      var text;
+      loader.load('VT323/VT323_Regular.json', function (font) {
+         var selectedObject = scene.getObjectByName(name);
+         if (selectedObject) {
+            scene.remove(selectedObject);
+         }
+         var geometry = new THREE.TextGeometry( text, {
+         font: font,
+         size: 8,
+         height: 2,
+         }); 
+         var material = new THREE.MeshBasicMaterial({color: scoreBoard.color});
+         counterMesh = new THREE.Mesh(geometry, material);
+         counterMesh.name = name;
+         counterMesh.position.set(-35, 40, 0);
+         counterMesh.rotation.x = 1;
+         scene.add(counterMesh);
+      });
+   }
+
+      function restart_speed(){
+         stepX = 0.15;
+         stepY = 0.25;
+         speed = 1;
+      }     
+
+      //-- Función que controla las vidas -------//
+   function Lives(sphere, scene) {
+      if (sphere.position.y < borders[3].position.y) {
+         go = false;
+         sphere.position.x = 0;
+         sphere.position.y = -23;
+         borders[3].position.x = 0;
+         stepY *= -1;
+         lives -= 1;
+         restart_speed();
+         if(lives == 0){
+            go = false;
+            score = 0;
+            lives = 3;
+            getCounter(scene, 'score', "Perdiste,¿Otra partida?" );
+         } else {
+            getCounter(scene, 'score', "SCORE:" + score +  "-" + "LIVES:" + lives);
+         }                
+      }               
+   }
+
+   function changeSpeed(userPosition, previousPosition){
+      var speed = Math.abs(userPosition - previousPosition);
+      if (speed > 5) {
+         return speed = 1.25;
+      } else {
+         return speed = 1;
+      }      
+   }
+
+   function changeAngle(sphere, userPosition) {
+      var angle = sphere.position.x - userPosition;
+      return angle * 0.8;
+   }
+
+   function checkCollision(sphere, borders, scene, userPosition) {
+      var originPosition = sphere.position.clone();
+
+      for (var i = 0; i < sphere.geometry.vertices.length; i++) {
+         var localVertex = sphere.geometry.vertices[i].clone();
+         var globalVertex = localVertex.applyMatrix4(sphere.matrix);
+         var directionVector = globalVertex.sub(sphere.position);
+         var ray = new THREE.Raycaster(originPosition, directionVector.clone().normalize());
+         var collisionResults = ray.intersectObjects(borders);
+
+         if (collisionResults.length > 0 && collisionResults[0].distance < directionVector.length()) {
+            //--  Collision detected, 
+            //-- bordes derecho e izquierdo
+            switch (collisionResults[0].object.name) { 
+                case "left":
+                    stepX *= -1;
+                    break; 
+                case "right": 
+                    stepX *= -1;
+                    break;     
+                case "top":
+                    stepY *= -1; 
+                    break;
+                case "player": 
+                    stepY *= -1;   
+                    userPosition = borders[3].position.x;
+                    angle = changeAngle(sphere, userPosition);
+                    speed = changeSpeed(userPosition, previousPosition);
+                    break; 
+                default:
+                    stepY *= -1; 
+                    previousPosition =  borders[3].position.x;                 
+                    scene.remove(collisionResults[0].object);                
+                    for (var k = 4; k < borders.length; k++) {
+                        if (borders[k] === collisionResults[0].object) {
+                    break;
+                        } 
+                    } 
+                    borders.splice(k, 1);                  
+                    score ++;
+                    if(borders.length == 4){
+                        getCounter(scene, 'score', "Ganaste,¿Otra partida?");
+                        sphere.position.x = 0;
+                        sphere.position.y = -23;
+                        borders[3].position.x = 0;
+                        go = false;
+                        restart_speed();
+                        stepY *= -1;
+                        score = 0;
+                        lives = 3;                     
+                    } else {
+                        getCounter(scene, 'score', "SCORE:" + score +  "-" + "LIVES:" + lives);
+                    }            
+            }                  
+      break;  
+            }
+        }
+      }
+
+</script>
+</head>
+<body onload="init()">
+</body>
+
+</html>
